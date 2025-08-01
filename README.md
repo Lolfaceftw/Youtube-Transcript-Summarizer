@@ -35,8 +35,8 @@ A Google Gemini API key is also required.
 
 1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/Lolfaceftw/youtube-transcript-summarizer.git
-    cd youtube-transcript-summarizer
+    git clone https://github.com/Lolfaceftw/Youtube-Transcript-Summarizer.git
+    cd Youtube-Transcript-Summarizer
     ```
 
 2.  **Create a virtual environment (recommended):**
@@ -125,4 +125,4 @@ All notable changes to this project will be documented in the `CHANGELOG.md` fil
 
 ## Contact/Support
 
-If you encounter any issues or have questions, please file an issue on the [GitHub issues page](https://github.com/Lolfaceftw/youtube-transcript-summarizer/issues).
+If you encounter any issues or have questions, please file an issue on the [GitHub issues page](https://github.com/Lolfaceftw/Youtube-Transcript-Summarizer/issues).
