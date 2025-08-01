@@ -9,7 +9,19 @@ from dotenv import load_dotenv
 import os
 
 console = Console()
+<<<<<<< HEAD
 model = "gemini-2.5-flash"
+=======
+model = "gemini-2.5-pro"
+config=types.GenerateContentConfig(
+                    thinking_config=types.ThinkingConfig(
+                        include_thoughts=True
+                    ),
+                    tools=[types.Tool(
+                        google_search=types.GoogleSearch()
+                    )]
+                )
+>>>>>>> 361f6e5 (time stamp)
 
 load_dotenv()
 
@@ -34,6 +46,35 @@ Conclude with a brief, high-level overview capturing the essence and purpose of 
 
 Ensure the summary is clear, logically structured, and retains all critical information from the transcript. Do not omit any substantive content.
 
+<<<<<<< HEAD
+=======
+You must use Google Search to verify any information made available from the summary if it is factual and accurate.
+
+You must add in-text citations according to the transcript's time-stamp noted by "(seconds.ms)"
+
+Example
+Transcript
+(369.18) now if you want to replicate this and (371.52) you're a
+small business you only really (373.259) need to create four groups for your
+
+Summary
+If you're a small business, you need to create four groups [00:06:09-00:06:13].
+
+How to Calculate:
+Round off the start and end, 369 and 373. Convert the seconds to hh:mm:ss.
+
+How? 369/3600 = 0.1025
+00 for hours (before the dot).
+
+after the dot, .1205 * 60 minutes = 6.15 minutes
+06 for minutes.
+
+0.15 * 60 seconds = 09 seconds
+
+so, 00:06:09 for the start.
+
+<u>When you will add the in-text citation, strictly re-read the sentence again, check their timestamps on the transcript, and cross-verify. Accuracy of time-stamps are paramount and ensure we only have a 1-2 second error!</u>
+>>>>>>> 361f6e5 (time stamp)
 ---
 Transcript:
 """
@@ -71,7 +112,7 @@ def fetch_and_print_transcript() -> None:
         with console.status("Loading transcript...", spinner="dots"):
             transcript_data = tt.fetch(video_id).to_raw_data()
 
-            full_transcript = " ".join(segment['text'] for segment in transcript_data)
+            full_transcript = " ".join(f"({segment['start']}) {segment['text']}" for segment in transcript_data)
 
         console.print("\nSuccess! Transcript extracted.\n")
         console.print(Panel(full_transcript, title="Transcript",expand=False))
