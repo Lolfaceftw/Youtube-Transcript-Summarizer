@@ -12,7 +12,7 @@ from typing import Any
 import datetime
 import os
 
-version = "1.1.5"
+version = "1.1.6"
 console = Console()
 model = "gemini-2.5-flash"
 
@@ -31,7 +31,8 @@ client: genai.Client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 # Feel free to edit your own prompt!
 PERSONA = """You are an expert assistant specializing in detailed and accurate summarization. Your task is to summarize the provided YouTube video transcript thoroughly, ensuring no key details, insights, or action items are omitted.
 """
-PROMPT = """
+PROMPT = f"""
+---
 Structure your summary as follows:
 # <YouTube Title>
 ## <YouTube Uploader>
@@ -48,16 +49,17 @@ Structure your summary as follows:
 9. **Resources or References:** List any resources, tools, links, or references mentioned during the video.
 10. **Next Steps or Follow-Up:** Summarize any next steps, follow-up actions, or future topics suggested at the end of the video.
 11. **Sources:** Input the references, separated in new lines, that have been used in verifying factual and accurate information. Strictly format it as follows: [Title of the Resource](url)
-
+---
+# Instructions
 Conclude with a brief, high-level overview capturing the essence and purpose of the video. DO NOT add any summary, explanation, or thoughts before "# <YouTube Title>"
 
 Ensure the summary is clear, logically structured, and retains all critical information from the transcript. Do not omit any substantive content.
 
-You must use Google Search to verify any information made available from the summary if it is factual and accurate.
+You must use Google Search to verify any information made available from the summary if it is factual and accurate. Strictly be informed of the current date to fetch latest information on Google Search. Today is {datetime.date.today().strftime("%m/%d/%Y")}. For any unfamiliar terms, you are strictly to use Google Search for these.
 
 You must add in-text citations according to the transcript's start time-stamp noted by "[hh:mm:ss]"
 
-Example
+## Example
 Transcript
 [00:06:09] now if you want to replicate this and [00:06:10] you're a
 small business you only really [00:06:12] need to create four groups for your [00:06:13]
@@ -245,7 +247,6 @@ def fetch_and_print_transcript() -> None:
         console.print(Panel(Markdown(escape(response)), title="Summarized Transcript"))
 
         # Save to current working directory as markdown  and PDF of the summarized transcript.
-
         console.print("[green]Summarized transcript saved.[/green]")
         pdf = MarkdownPdf()
         pdf.add_section(Section(response))
