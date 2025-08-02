@@ -12,6 +12,7 @@ from typing import Any
 import datetime
 import os
 
+version = "1.1.2"
 console = Console()
 model = "gemini-2.5-flash"
 
@@ -121,11 +122,12 @@ def fetch_and_print_transcript() -> None:
     """
     console.clear(home=True)
     
-    header = """
+    header = f"""
     This script will fetch the full transcript of a [bold][black on white]You[/black on white][white on red]Tube[/white on red][/bold] video.
     \nTo get the Video ID, look at the [lightblue]URL[/lightblue] of the video:
     For example, in '[gray][underline]https://www.youtube.com/watch?v=dQw4w9WgXcQ[/gray][/underline]',
     The Video ID is the part after '[gray]v=[/gray]': [yellow]dQw4w9WgXcQ[/yellow]
+    \nVersion: {version}
     """
     
     console.print(Panel.fit(header, title="YouTube Transcript Summarizer (YTS)", subtitle="Christian Klein C. Ramos"))    
