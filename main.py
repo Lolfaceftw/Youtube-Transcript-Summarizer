@@ -12,37 +12,34 @@ from typing import Any
 import datetime
 import os
 
-version = "1.1.2"
+version = "1.1.4"
 console = Console()
 model = "gemini-2.5-flash"
 
-config=types.GenerateContentConfig(
-                    thinking_config=types.ThinkingConfig(
-                        include_thoughts=True,
-                        thinking_budget=32768
-                    ),
-                    tools=[
-                    types.Tool(
-                        google_search=types.GoogleSearch()
-                    )]
-                )
+config = types.GenerateContentConfig(
+    thinking_config=types.ThinkingConfig(include_thoughts=True, thinking_budget=24576),
+    tools=[types.Tool(google_search=types.GoogleSearch())],
+    temperature=0.7
+)
 
 load_dotenv()
 
-yt_metadata = {'quiet': True, 'no_warnings': True}
+yt_metadata: dict = {"quiet": True, "no_warnings": True}
 
-# Feel free to edit your own prompt! 
+client: genai.Client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+
+# Feel free to edit your own prompt!
 PERSONA = """You are an expert assistant specializing in detailed and accurate summarization. Your task is to summarize the provided YouTube video transcript thoroughly, ensuring no key details, insights, or action items are omitted.
 """
 PROMPT = """
 Structure your summary as follows:
-# YouTube Title
-## YouTube Uploader
+# <YouTube Title>
+## <YouTube Uploader>
 1. **Main Topics/Sections:** Identify and list the primary topics or sections covered in the video.
 2. **Key Points:** For each topic, summarize the key points discussed. Be comprehensive—include definitions, explanations, examples, and any data or statistics mentioned.
 3. **Important Decisions or Conclusions:** Document any significant decisions, conclusions, or takeaways presented in the video.
 4. **Action Items or Steps:** List any recommended actions, steps, or instructions provided by the speaker(s). Include any sequence or priority mentioned.
-5. **Challenges, Problems, or Solutions:** Note any challenges or problems described, along with any solutions or workarounds discussed. Since this is a bullet list, this is the format:
+5. **Challenges, Problems, or Solutions:** Note any challenges or problems described, along with any solutions or workarounds discussed. Since this is a bullet list, this is strictly the format:
 - Challenge: the challenge
 - - Solution: the solution
 6. **Notable Quotes or Insights [Grammatically Corrected]:** Include any memorable or significant quotes, statements, or unique insights from the speaker(s) transcript. 
@@ -50,9 +47,9 @@ Structure your summary as follows:
 8. **Time Frames or Deadlines:** Document any specific time frames, deadlines, or schedules mentioned.
 9. **Resources or References:** List any resources, tools, links, or references mentioned during the video.
 10. **Next Steps or Follow-Up:** Summarize any next steps, follow-up actions, or future topics suggested at the end of the video.
-11. **Sources:** Input the references, separated in new lines, that have been used in verifying factual and accurate information.
+11. **Sources:** Input the references, separated in new lines, that have been used in verifying factual and accurate information. Strictly format it as follows: [Title of the Resource](url)
 
-Conclude with a brief, high-level overview capturing the essence and purpose of the video.
+Conclude with a brief, high-level overview capturing the essence and purpose of the video. DO NOT add any summary, explanation, or thoughts before "# <YouTube Title>"
 
 Ensure the summary is clear, logically structured, and retains all critical information from the transcript. Do not omit any substantive content.
 
@@ -73,10 +70,12 @@ There will be a starting to ending time on the in-text citation.
 ---
 Transcript:
 """
+
+
 def load_transcript(yt_api: YouTubeTranscriptApi, video_id: str) -> str:
     """
     Loads the transcript using the youtube_transcript_api package with its video_id.
-    
+
     Args:
         yt_api (YouTubeTranscriptApi): The YouTubeTranscriptApi instance.
         video_id (str): The video id.
@@ -87,9 +86,25 @@ def load_transcript(yt_api: YouTubeTranscriptApi, video_id: str) -> str:
     with console.status("Loading transcript...", spinner="dots"):
         transcript_data = yt_api.fetch(video_id).to_raw_data()
 
-        full_transcript = " ".join(f"[{datetime.timedelta(seconds=round(segment['start']))}] {segment['text']}" for segment in transcript_data)
+        full_transcript = " ".join(
+            f"[{datetime.timedelta(seconds=round(segment['start']))}] {segment['text']}"
+            for segment in transcript_data
+        )
 
     return full_transcript
+
+
+def save_transcript(transcript: str) -> None:
+    """
+    Saves the transcript on the default file location name.
+    Args:
+        transcript (str): The full transcript.
+    """
+    with console.status("Saving transcript...", spinner="dots"):
+        with open("transcript.txt", "w", encoding="utf-8-sig") as f:
+            f.write(transcript)
+            f.close()
+
 
 def get_metadata(url: str) -> dict:
     """
@@ -102,35 +117,64 @@ def get_metadata(url: str) -> dict:
     """
     with YoutubeDL(yt_metadata) as ydl:
         info: dict[str, Any] | None = ydl.extract_info(url, download=False)
-        
+
         if info is None:
             raise Exception
-        
-        metadata: dict[str, str] = {"title": info.get("title", "Unknown Title"), "uploader": info.get("uploader", "Unknown Uploader")}
+
+        metadata: dict[str, str] = {
+            "title": info.get("title", "Unknown Title"),
+            "uploader": info.get("uploader", "Unknown Uploader"),
+        }
         return metadata
+
+def get_metaprompt(video_id: str) -> list:
+    """
+    Gets the metaprompt using the YouTube video's metadata of title and uploader.
+    
+    Args:
+        video_id (str): The video id of the YouTube video.
+    
+    Returns:
+        meta_arr (list): Consists of "YouTube Title\nYouTube Uploader" as the first element and the metadata dictionary as the last.
+    """
+    with console.status("Getting YouTube metadata...", spinner="dots"):
+        metadata = get_metadata(f"https://youtube.com/watch?v={video_id}")
+        meta_prompt = f"""YouTube Title: {metadata.get("title")}
+        YouTube Uploader: {metadata.get("uploader")}
+        """
+        meta_arr = [meta_prompt, metadata]
+    return meta_arr
 
 def fetch_and_print_transcript() -> None:
     """
     Prompts the user for a YouTube video ID, fetches its transcript,
     and console.prints the transcript as a single, continuous block of text.
-    
+
     Args:
         None
-    
+
     Returns:
         None
     """
     console.clear(home=True)
-    
+
     header = f"""
     This script will fetch the full transcript of a [bold][black on white]You[/black on white][white on red]Tube[/white on red][/bold] video.
-    \nTo get the Video ID, look at the [lightblue]URL[/lightblue] of the video:
+    
+    To get the Video ID, look at the [lightblue]URL[/lightblue] of the video:
     For example, in '[gray][underline]https://www.youtube.com/watch?v=dQw4w9WgXcQ[/gray][/underline]',
     The Video ID is the part after '[gray]v=[/gray]': [yellow]dQw4w9WgXcQ[/yellow]
-    \nVersion: {version}
-    """
     
-    console.print(Panel.fit(header, title="YouTube Transcript Summarizer (YTS)", subtitle="Christian Klein C. Ramos"))    
+    Version: {version}
+    """
+
+    console.print(
+        Panel.fit(
+            header,
+            title="YouTube Transcript Summarizer (YTS)",
+            subtitle="Christian Klein C. Ramos",
+        )
+    )
     video_id = console.input("Please enter the YouTube Video ID: ").strip()
 
     if not video_id:
@@ -141,31 +185,30 @@ def fetch_and_print_transcript() -> None:
 
     try:
         tt = YouTubeTranscriptApi()
-        full_transcript = load_transcript(yt_api=tt, video_id=video_id)
 
+        # Load the transcript
+        full_transcript: str = load_transcript(yt_api=tt, video_id=video_id)
         console.print("\nSuccess! Transcript extracted.\n")
-        console.print(Panel(full_transcript, title="Transcript",expand=False))
-        with console.status("Saving transcript...", spinner="dots"):
-            with open("transcript.txt", "w", encoding="utf-8-sig") as f:
-                f.write(full_transcript)
-                f.close()
-                console.print("[green]Transcript saved.[/green]")
-        
-        client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-        
-        response = ""
+        console.print(Panel(full_transcript, title="Transcript", expand=False))
 
-        with console.status("Getting YouTube metadata...", spinner="dots"):
-            metadata = get_metadata(f"https://youtube.com/watch?v={video_id}")
-            meta_prompt = f"""YouTube Title: {metadata.get("title")}
-            YouTube Uploader: {metadata.get("uploader")}
-            """
+        # Save the transcript
+        save_transcript(full_transcript)
+        console.print("[green]Transcript saved.[/green]")
+
+        meta_arr: list = get_metaprompt(video_id=video_id)
+        meta_prompt: str = meta_arr[0]
+        metadata: dict = meta_arr[1]
+        
         # We enable thinking to include thoughts to display on our status. Do note that this requires you using a Gemini model supporting Chain-of-Thought (CoT).
-        with console.status("Summarization request sent. Waiting for AI...", spinner="dots") as status:
+        with console.status(
+            "Summarization request sent. Waiting for AI...", spinner="dots"
+        ) as status:
             response_stream = client.models.generate_content_stream(
-                model=model, contents=f"{PERSONA}{meta_prompt}{PROMPT}{full_transcript}",
-                config=config
+                model=model,
+                contents=f"{PERSONA}{meta_prompt}{PROMPT}{full_transcript}",
+                config=config,
             )
+            response: str = ""
             for chunk in response_stream:
                 if chunk.candidates:
                     candidate = chunk.candidates[0]
@@ -173,7 +216,7 @@ def fetch_and_print_transcript() -> None:
                         for part in candidate.content.parts:
                             if part.thought:
                                 status.update(Markdown(escape(str(part.text))))
-                            elif part.text: 
+                            elif part.text:
                                 response += part.text
 
         console.print(Panel(Markdown(escape(response)), title="Summarized Transcript"))
@@ -193,6 +236,7 @@ def fetch_and_print_transcript() -> None:
     except Exception as e:
         console.print(f"\n[ERROR] An unexpected error occurred.")
         console.print(f"Details: {escape(str(e))}")
+
 
 if __name__ == "__main__":
     while True:
