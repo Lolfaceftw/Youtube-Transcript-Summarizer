@@ -12,7 +12,7 @@ from typing import Any
 import datetime
 import os
 
-version = "1.1.4"
+version = "1.1.5"
 console = Console()
 model = "gemini-2.5-flash"
 
@@ -104,6 +104,18 @@ def save_transcript(transcript: str) -> None:
             f.write(transcript)
             f.close()
 
+def save_summarized(response: str) -> None:
+    """
+    Saves the summarized response.
+
+    Args:
+        response (str): The full response of the AI model.
+    """
+    with console.status("Saving summarized transcript...", spinner="dots"):
+        with open("summarized.md", "w", encoding="utf-8-sig") as f:
+            f.write(response)
+            f.close()
+
 def get_metadata(url: str) -> dict:
     """
     Gets the metadata of the provided complete url of the YouTube video.
@@ -142,6 +154,37 @@ def get_metaprompt(video_id: str) -> list:
         """
         meta_arr = [meta_prompt, metadata]
     return meta_arr
+
+def summarize_now(meta_prompt: str, full_transcript: str) -> str:
+    """
+    Summarizes the full transcript using the AI model with the necessary prompt with the meta data.
+
+    Args:
+        meta_prompt (str): The prompt containing the metadata of the YouTube video such as title and uploader.
+        full_transcript (str): The full transcript of the video with time stamps.
+
+    Returns:
+        response (str): The full response of the AI model in markdown.
+    """
+    with console.status(
+        "Summarization request sent. Waiting for AI...", spinner="dots"
+    ) as status:
+        response_stream = client.models.generate_content_stream(
+            model=model,
+            contents=f"{PERSONA}{meta_prompt}{PROMPT}{full_transcript}",
+            config=config,
+        )
+        response: str = ""
+        for chunk in response_stream:
+            if chunk.candidates:
+                candidate = chunk.candidates[0]
+                if candidate.content and candidate.content.parts:
+                    for part in candidate.content.parts:
+                        if part.thought:
+                            status.update(Markdown(escape(str(part.text))))
+                        elif part.text:
+                            response += part.text
+    return response
 
 def fetch_and_print_transcript() -> None:
     """
@@ -191,48 +234,24 @@ def fetch_and_print_transcript() -> None:
         # Save the transcript
         save_transcript(full_transcript)
         console.print("[green]Transcript saved.[/green]")
-        
-        client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-        
-        response = ""
 
         meta_arr: list = get_metaprompt(video_id=video_id)
         meta_prompt: str = meta_arr[0]
         metadata: dict = meta_arr[1]
         
         # We enable thinking to include thoughts to display on our status. Do note that this requires you using a Gemini model supporting Chain-of-Thought (CoT).
-        with console.status(
-            "Summarization request sent. Waiting for AI...", spinner="dots"
-        ) as status:
-            response_stream = client.models.generate_content_stream(
-                model=model,
-                contents=f"{PERSONA}{meta_prompt}{PROMPT}{full_transcript}",
-                config=config,
-            )
-            response: str = ""
-            for chunk in response_stream:
-                if chunk.candidates:
-                    candidate = chunk.candidates[0]
-                    if candidate.content and candidate.content.parts:
-                        for part in candidate.content.parts:
-                            if part.thought:
-                                status.update(Markdown(escape(str(part.text))))
-                            elif part.text:
-                                response += part.text
+        response: str = summarize_now(meta_prompt=meta_prompt, full_transcript=full_transcript)
 
         console.print(Panel(Markdown(escape(response)), title="Summarized Transcript"))
 
         # Save to current working directory as markdown  and PDF of the summarized transcript.
-        with console.status("Saving summarized transcript...", spinner="dots"):
-            with open("summarized.md", "w", encoding="utf-8-sig") as f:
-                f.write(response)
-                f.close()
-                console.print("[green]Summarized transcript saved.[/green]")
-            pdf = MarkdownPdf(toc_level=4)
-            pdf.add_section(Section(response))
-            pdf.meta["title"] = "Transcribed PDF"
-            pdf.meta["author"] = "YouTube Transcript Summarizer by Lolfaceftw"
-            pdf.save(f"{metadata.get('title')}.pdf")
+
+        console.print("[green]Summarized transcript saved.[/green]")
+        pdf = MarkdownPdf()
+        pdf.add_section(Section(response))
+        pdf.meta["title"] = "Transcribed PDF"
+        pdf.meta["author"] = "YouTube Transcript Summarizer by Lolfaceftw"
+        pdf.save(f"{metadata.get('title')}.pdf")
 
     except Exception as e:
         console.print(f"\n[ERROR] An unexpected error occurred.")
