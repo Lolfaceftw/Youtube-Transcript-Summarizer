@@ -8,6 +8,7 @@ from rich.markdown import Markdown
 from dotenv import load_dotenv
 from markdown_pdf import MarkdownPdf, Section
 from yt_dlp import YoutubeDL
+from typing import Any
 import datetime
 import os
 
@@ -71,10 +72,41 @@ There will be a starting to ending time on the in-text citation.
 ---
 Transcript:
 """
-def get_metadata(url: str):
+def load_transcript(yt_api: YouTubeTranscriptApi, video_id: str) -> str:
+    """
+    Loads the transcript using the youtube_transcript_api package with its video_id.
+    
+    Args:
+        yt_api (YouTubeTranscriptApi): The YouTubeTranscriptApi instance.
+        video_id (str): The video id.
+
+    Returns:
+        full_transcript (str): The full transcript with the start timestamp and transcription.
+    """
+    with console.status("Loading transcript...", spinner="dots"):
+        transcript_data = yt_api.fetch(video_id).to_raw_data()
+
+        full_transcript = " ".join(f"[{datetime.timedelta(seconds=round(segment['start']))}] {segment['text']}" for segment in transcript_data)
+
+    return full_transcript
+
+def get_metadata(url: str) -> dict:
+    """
+    Gets the metadata of the provided complete url of the YouTube video.
+    Args:
+        url (str): URL of the YouTube video.
+
+    Returns:
+        metadata (dict): The metadata of the YouTube video including the title and uploader.
+    """
     with YoutubeDL(yt_metadata) as ydl:
-        info = ydl.extract_info(url, download=False)
-        return {"title": info.get("title"), "uploader": info.get("uploader"), "duration": info.get("duration")}
+        info: dict[str, Any] | None = ydl.extract_info(url, download=False)
+        
+        if info is None:
+            raise Exception
+        
+        metadata: dict[str, str] = {"title": info.get("title", "Unknown Title"), "uploader": info.get("uploader", "Unknown Uploader")}
+        return metadata
 
 def fetch_and_print_transcript() -> None:
     """
@@ -106,10 +138,7 @@ def fetch_and_print_transcript() -> None:
 
     try:
         tt = YouTubeTranscriptApi()
-        with console.status("Loading transcript...", spinner="dots"):
-            transcript_data = tt.fetch(video_id).to_raw_data()
-
-            full_transcript = " ".join(f"[{datetime.timedelta(seconds=round(segment['start']))}] {segment['text']}" for segment in transcript_data)
+        full_transcript = load_transcript(yt_api=tt, video_id=video_id)
 
         console.print("\nSuccess! Transcript extracted.\n")
         console.print(Panel(full_transcript, title="Transcript",expand=False))
@@ -127,7 +156,6 @@ def fetch_and_print_transcript() -> None:
             metadata = get_metadata(f"https://youtube.com/watch?v={video_id}")
             meta_prompt = f"""YouTube Title: {metadata.get("title")}
             YouTube Uploader: {metadata.get("uploader")}
-            Total Duration: {datetime.timedelta(seconds=round(metadata.get("duration")))}
             """
         # We enable thinking to include thoughts to display on our status. Do note that this requires you using a Gemini model supporting Chain-of-Thought (CoT).
         with console.status("Summarization request sent. Waiting for AI...", spinner="dots") as status:
@@ -136,12 +164,14 @@ def fetch_and_print_transcript() -> None:
                 config=config
             )
             for chunk in response_stream:
-                for part in chunk.candidates[0].content.parts:
-                    if part.thought:
-                        #thought_text = part.text.strip()
-                        status.update(Markdown(escape(str(part.text))))
-                    elif part.text:
-                        response += part.text
+                if chunk.candidates:
+                    candidate = chunk.candidates[0]
+                    if candidate.content and candidate.content.parts:
+                        for part in candidate.content.parts:
+                            if part.thought:
+                                status.update(Markdown(escape(str(part.text))))
+                            elif part.text: 
+                                response += part.text
 
         console.print(Panel(Markdown(escape(response)), title="Summarized Transcript"))
 
