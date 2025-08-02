@@ -93,7 +93,6 @@ def load_transcript(yt_api: YouTubeTranscriptApi, video_id: str) -> str:
 
     return full_transcript
 
-
 def save_transcript(transcript: str) -> None:
     """
     Saves the transcript on the default file location name.
@@ -104,7 +103,6 @@ def save_transcript(transcript: str) -> None:
         with open("transcript.txt", "w", encoding="utf-8-sig") as f:
             f.write(transcript)
             f.close()
-
 
 def get_metadata(url: str) -> dict:
     """
@@ -167,7 +165,6 @@ def fetch_and_print_transcript() -> None:
     
     Version: {version}
     """
-
     console.print(
         Panel.fit(
             header,
@@ -185,15 +182,19 @@ def fetch_and_print_transcript() -> None:
 
     try:
         tt = YouTubeTranscriptApi()
-
+        
         # Load the transcript
         full_transcript: str = load_transcript(yt_api=tt, video_id=video_id)
         console.print("\nSuccess! Transcript extracted.\n")
-        console.print(Panel(full_transcript, title="Transcript", expand=False))
-
+        console.print(Panel(full_transcript, title="Transcript",expand=False))
+        
         # Save the transcript
         save_transcript(full_transcript)
         console.print("[green]Transcript saved.[/green]")
+        
+        client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
+        
+        response = ""
 
         meta_arr: list = get_metaprompt(video_id=video_id)
         meta_prompt: str = meta_arr[0]
