@@ -12,14 +12,14 @@ from typing import Any
 import datetime
 import os
 
-version = "1.1.2"
+version = "1.1.3"
 console = Console()
 model = "gemini-2.5-flash"
 
 config=types.GenerateContentConfig(
                     thinking_config=types.ThinkingConfig(
                         include_thoughts=True,
-                        thinking_budget=32768
+                        thinking_budget=24576
                     ),
                     tools=[
                     types.Tool(
@@ -91,6 +91,17 @@ def load_transcript(yt_api: YouTubeTranscriptApi, video_id: str) -> str:
 
     return full_transcript
 
+def save_transcript(transcript: str) -> None:
+    """
+    Saves the transcript on the default file location name.
+    Args:
+        transcript (str): The full transcript.
+    """
+    with console.status("Saving transcript...", spinner="dots"):
+        with open("transcript.txt", "w", encoding="utf-8-sig") as f:
+            f.write(transcript)
+            f.close()
+
 def get_metadata(url: str) -> dict:
     """
     Gets the metadata of the provided complete url of the YouTube video.
@@ -124,10 +135,12 @@ def fetch_and_print_transcript() -> None:
     
     header = f"""
     This script will fetch the full transcript of a [bold][black on white]You[/black on white][white on red]Tube[/white on red][/bold] video.
-    \nTo get the Video ID, look at the [lightblue]URL[/lightblue] of the video:
+    
+    To get the Video ID, look at the [lightblue]URL[/lightblue] of the video:
     For example, in '[gray][underline]https://www.youtube.com/watch?v=dQw4w9WgXcQ[/gray][/underline]',
     The Video ID is the part after '[gray]v=[/gray]': [yellow]dQw4w9WgXcQ[/yellow]
-    \nVersion: {version}
+    
+    Version: {version}
     """
     
     console.print(Panel.fit(header, title="YouTube Transcript Summarizer (YTS)", subtitle="Christian Klein C. Ramos"))    
@@ -141,15 +154,15 @@ def fetch_and_print_transcript() -> None:
 
     try:
         tt = YouTubeTranscriptApi()
-        full_transcript = load_transcript(yt_api=tt, video_id=video_id)
-
+        
+        # Load the transcript
+        full_transcript: str = load_transcript(yt_api=tt, video_id=video_id)
         console.print("\nSuccess! Transcript extracted.\n")
         console.print(Panel(full_transcript, title="Transcript",expand=False))
-        with console.status("Saving transcript...", spinner="dots"):
-            with open("transcript.txt", "w", encoding="utf-8-sig") as f:
-                f.write(full_transcript)
-                f.close()
-                console.print("[green]Transcript saved.[/green]")
+        
+        # Save the transcript
+        save_transcript(full_transcript)
+        console.print("[green]Transcript saved.[/green]")
         
         client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
         
