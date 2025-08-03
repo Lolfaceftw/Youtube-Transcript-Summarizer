@@ -11,10 +11,15 @@ from yt_dlp import YoutubeDL
 from typing import Any
 import datetime
 import os
+import logging
+import re
+# TODO: use pytest for testing, and modularize the code (config.ini).
+# TODO? Chain Prompting?
 
-version = "1.1.6"
+version = "1.1.7"
 console = Console()
 model = "gemini-2.5-flash"
+debug_level = logging.INFO
 
 config = types.GenerateContentConfig(
     thinking_config=types.ThinkingConfig(include_thoughts=True, thinking_budget=24576),
@@ -48,16 +53,20 @@ Structure your summary as follows:
 8. **Time Frames or Deadlines:** Document any specific time frames, deadlines, or schedules mentioned.
 9. **Resources or References:** List any resources, tools, links, or references mentioned during the video.
 10. **Next Steps or Follow-Up:** Summarize any next steps, follow-up actions, or future topics suggested at the end of the video.
-11. **Sources:** Input the references, separated in new lines, that have been used in verifying factual and accurate information. Strictly format it as follows: [Title of the Resource](url)
+11. **Sources:** Input the references, separated in new lines, that have been used in verifying factual and accurate information. Strictly format it as follows: 
+- [number] [Title of the Resource](url)
+- [number] [Title of the Resource](url)
 ---
 # Instructions
-Conclude with a brief, high-level overview capturing the essence and purpose of the video. DO NOT add any summary, explanation, or thoughts before "# <YouTube Title>"
+Conclude with a brief, high-level overview capturing the essence and purpose of the video. 
+
+<u>STRICTLY DO NOT add any summary, explanation, or thoughts before "# <YouTube Title>"</u> You are only to output a summary starting from the YouTube Title, no comments, no frills.
 
 Ensure the summary is clear, logically structured, and retains all critical information from the transcript. Do not omit any substantive content.
 
 You must use Google Search to verify any information made available from the summary if it is factual and accurate. Strictly be informed of the current date to fetch latest information on Google Search. Today is {datetime.date.today().strftime("%m/%d/%Y")}. For any unfamiliar terms, you are strictly to use Google Search for these.
 
-You must add in-text citations according to the transcript's start time-stamp noted by "[hh:mm:ss]"
+You must add in-text citations according to the transcript's start time-stamp noted by "[hh:mm:ss]" and also use markdown's hyperlinking.
 
 ## Example
 Transcript
@@ -65,14 +74,29 @@ Transcript
 small business you only really [00:06:12] need to create four groups for your [00:06:13]
 
 Summary
-If you're a small business, you need to create four groups [00:06:09-00:06:13].
+If you're a small business, you need to create four groups [00:06:09-00:06:13]. [Studies have shown this is better](link here)[2][3].
+
+Sources
+* [1] [Link Title](link here)
+* [2] [Link Title](link here)
+* [3] [Link Title](link here)
 
 Interpretation
-There will be a starting to ending time on the in-text citation.
+There will be a starting to ending time on the in-text citation. Additionally, if a phrase of text is from a weblink, the first source acts as a hyperlink and succeeding links will be enclosed in square brackets.
+
 ---
 Transcript:
 """
 
+def init_logger() -> logging.Logger:
+    logger = logging.getLogger(__name__)
+    logger.setLevel(debug_level)
+    file_handler = logging.FileHandler("debug.log")
+    file_handler.setLevel(debug_level)
+    formatter = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+    return logger
 
 def load_transcript(yt_api: YouTubeTranscriptApi, video_id: str) -> str:
     """
@@ -177,6 +201,7 @@ def summarize_now(meta_prompt: str, full_transcript: str) -> str:
             config=config,
         )
         response: str = ""
+        
         for chunk in response_stream:
             if chunk.candidates:
                 candidate = chunk.candidates[0]
@@ -186,6 +211,24 @@ def summarize_now(meta_prompt: str, full_transcript: str) -> str:
                             status.update(Markdown(escape(str(part.text))))
                         elif part.text:
                             response += part.text
+                if candidate.grounding_metadata.grounding_supports and candidate.grounding_metadata.grounding_chunks:
+                    supports = candidate.grounding_metadata.grounding_supports
+                    chunks = candidate.grounding_metadata.grounding_chunks
+                    sorted_supports = sorted(supports, key=lambda s: s.segment.end_index, reverse=True)
+                    for support in sorted_supports:
+                        end_index = support.segment.end_index
+                        if support.grounding_chunk_indices:
+                            citation = []
+                            for i in support.grounding_chunk_indices:
+                                if i < len(chunks):
+                                    uri = chunks[i].web.uri
+                                    citation.append(f"[[{i+1}]({uri})]")
+                            citation_string = ", ".join(citation)
+                            response = response[:end_index] + citation_string + response[end_index:]
+                            logging.debug(response)
+            if chunk:
+                final_response = chunk
+                logger.debug(final_response)
     return response
 
 def fetch_and_print_transcript() -> None:
@@ -246,13 +289,15 @@ def fetch_and_print_transcript() -> None:
 
         console.print(Panel(Markdown(escape(response)), title="Summarized Transcript"))
 
+        save_summarized(response=response)
         # Save to current working directory as markdown  and PDF of the summarized transcript.
         console.print("[green]Summarized transcript saved.[/green]")
         pdf = MarkdownPdf()
         pdf.add_section(Section(response))
         pdf.meta["title"] = "Transcribed PDF"
         pdf.meta["author"] = "YouTube Transcript Summarizer by Lolfaceftw"
-        pdf.save(f"{metadata.get('title')}.pdf")
+        name = re.sub(r"[<>:\"\\/|?*\0-\31]", " ", metadata.get('title', 'None'))
+        pdf.save(f"{name}.pdf")
 
     except Exception as e:
         console.print(f"\n[ERROR] An unexpected error occurred.")
@@ -260,6 +305,7 @@ def fetch_and_print_transcript() -> None:
 
 
 if __name__ == "__main__":
+    logger = init_logger()
     while True:
         fetch_and_print_transcript()
         do_loop = console.input("Transcribe [yellow]another video[/yellow]? (Y/n) ")
