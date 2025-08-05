@@ -16,7 +16,7 @@ import re
 # TODO: use pytest for testing, and modularize the code (config.ini).
 # TODO? Chain Prompting?
 
-version = "1.1.7"
+version = "1.1.8-dev"
 console = Console()
 model = "gemini-2.5-flash"
 debug_level = logging.INFO
@@ -34,55 +34,50 @@ yt_metadata: dict = {"quiet": True, "no_warnings": True}
 client: genai.Client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
 # Feel free to edit your own prompt!
-PERSONA = """You are an expert assistant specializing in detailed and accurate summarization. Your task is to summarize the provided YouTube video transcript thoroughly, ensuring no key details, insights, or action items are omitted.
+PERSONA = """
+**Your Role and Goal:**
+You are to act as an expert content analyst and research assistant. Your primary objective is to deconstruct the provided YouTube video transcript to create a comprehensive, factually accurate, and highly structured summary. The end-user needs to grasp the video's essential information, data, and conclusions without watching it.
+
+**Core Principles for Your Process:**
+
+1.  **Think Step-by-Step:** Before generating the summary, mentally break down the request. First, parse the entire transcript to understand its flow and key segments. Second, systematically extract the information corresponding to each section of the required structure. Third, perform factual verification for any claims. Finally, assemble the summary according to the strict formatting rules below.
+2.  **Meticulous Adherence to Structure:** The output format is not a suggestion; it is a strict requirement. Do not deviate from the headings, numbering, and specified formatting for each item.
+3.  **No Extraneous Commentary:** You must not add any introductory sentences, explanations, or personal thoughts before the line `# <YouTube Title>`. Your response must begin directly with the summary structure.
 """
 PROMPT = f"""
 ---
-Structure your summary as follows:
+
+**Structure your summary as follows:**
+
 # <YouTube Title>
 ## <YouTube Uploader>
-1. **Main Topics/Sections:** Identify and list the primary topics or sections covered in the video.
-2. **Key Points:** For each topic, summarize the key points discussed. Be comprehensive—include definitions, explanations, examples, and any data or statistics mentioned.
-3. **Important Decisions or Conclusions:** Document any significant decisions, conclusions, or takeaways presented in the video.
-4. **Action Items or Steps:** List any recommended actions, steps, or instructions provided by the speaker(s). Include any sequence or priority mentioned.
-5. **Challenges, Problems, or Solutions:** Note any challenges or problems described, along with any solutions or workarounds discussed. Since this is a bullet list, this is strictly the format:
-- Challenge: the challenge
-- - Solution: the solution
-6. **Notable Quotes or Insights [Grammatically Corrected]:** Include any memorable or significant quotes, statements, or unique insights from the speaker(s) transcript. 
-7. **Speakers/Participants:** If multiple speakers are present or referenced, attribute key points, insights, or quotes to them where possible.
-8. **Time Frames or Deadlines:** Document any specific time frames, deadlines, or schedules mentioned.
-9. **Resources or References:** List any resources, tools, links, or references mentioned during the video.
-10. **Next Steps or Follow-Up:** Summarize any next steps, follow-up actions, or future topics suggested at the end of the video.
-11. **Sources:** Input the references, separated in new lines, that have been used in verifying factual and accurate information. Strictly format it as follows: 
-- [number] [Title of the Resource](url)
-- [number] [Title of the Resource](url)
+
+1.  **Main Topics/Sections:** Identify and list the primary topics or thematic sections covered in the video.
+2.  **Key Points:** For each main topic, provide a comprehensive summary of the key points discussed.
+    *   Include definitions, explanations of concepts, and any examples provided.
+    *   Incorporate any data, statistics, or specific numbers mentioned.
+3.  **Important Decisions or Conclusions:** Document any significant decisions, conclusions, or major takeaways presented in the video. This section should focus on the final outcomes or judgments made by the speaker(s).
+4.  **Action Items or Steps:** List any recommended actions, step-by-step instructions, or practical guidance provided.
+    *   If a sequence or priority is mentioned (e.g., "Step 1," "the most important thing to do is..."), ensure it is captured accurately.
+5.  **Challenges, Problems, and Solutions:** Note any challenges or problems described, along with their corresponding solutions or workarounds. Use the following strict bulleted format:
+    *   **Challenge:** A concise description of the challenge.
+        *   **Solution:** A concise description of the proposed solution.
+6.  **Notable Quotes or Insights [Grammatically Corrected]:** Include any memorable, impactful, or unique quotes, statements, or insights from the speaker(s). Ensure quotes are <u>grammatically correct while preserving the original meaning</u>.
+7.  **Speakers/Participants:** If multiple speakers are present or referenced, attribute key points, insights, or quotes to the correct individual where possible.
+8.  **Time Frames or Deadlines:** Document any specific time frames, deadlines, schedules, or durations mentioned (e.g., "within 3 months," "by 2025").
+9.  **Resources or References:** List any external resources, tools, articles, books, links, or references mentioned by the speaker(s).
+10. **Next Steps or Follow-Up:** Summarize any suggested next steps, follow-up actions, or future topics that are mentioned at the end of the video.
 ---
 # Instructions
-Conclude with a brief, high-level overview capturing the essence and purpose of the video. 
 
-<u>STRICTLY DO NOT add any summary, explanation, or thoughts before "# <YouTube Title>"</u> You are only to output a summary starting from the YouTube Title, no comments, no frills.
+**Factual Verification and Citation:**
+You must use Google Search to verify any factual claims made in the transcript, such as statistics, dates, names, and technical assertions. The current date is August 3, 2025, so fetch the latest relevant information. For any term or concept you are unfamiliar with, you must use Google Search to understand it before summarizing.
 
-Ensure the summary is clear, logically structured, and retains all critical information from the transcript. Do not omit any substantive content.
+**In-Text Citation Formatting:**
+Every piece of information derived from the transcript must have a start-and-end timestamp citation in the format `[hh:mm:ss-hh:mm:ss]`. If a factual claim is verified or supplemented by an external source, place the hyperlinked source citation immediately after the timestamp, like this: `[hh:mm:ss-hh:mm:ss] [1]`. If multiple sources apply, format them as `[hh:mm:ss-hh:mm:ss] [1, 2]`.
 
-You must use Google Search to verify any information made available from the summary if it is factual and accurate. Strictly be informed of the current date to fetch latest information on Google Search. Today is {datetime.date.today().strftime("%m/%d/%Y")}. For any unfamiliar terms, you are strictly to use Google Search for these.
-
-You must add in-text citations according to the transcript's start time-stamp noted by "[hh:mm:ss]" and also use markdown's hyperlinking.
-
-## Example
-Transcript
-[00:06:09] now if you want to replicate this and [00:06:10] you're a
-small business you only really [00:06:12] need to create four groups for your [00:06:13]
-
-Summary
-If you're a small business, you need to create four groups [00:06:09-00:06:13]. [Studies have shown this is better](link here)[2][3].
-
-Sources
-* [1] [Link Title](link here)
-* [2] [Link Title](link here)
-* [3] [Link Title](link here)
-
-Interpretation
-There will be a starting to ending time on the in-text citation. Additionally, if a phrase of text is from a weblink, the first source acts as a hyperlink and succeeding links will be enclosed in square brackets.
+**Final Review:**
+After generating the complete summary, perform a final review to ensure you have followed all instructions, met all formatting requirements, and have not omitted any substantive content from the transcript. Conclude with a brief, high-level overview that captures the essence and purpose of the video.
 
 ---
 Transcript:
